@@ -427,6 +427,10 @@ struct iommu_hwpt_vtd_s1 {
 	__u32 __reserved;
 };
 
+struct iommu_hwpt_kvm_info {
+	__aligned_u64 fd;
+};
+
 /**
  * enum iommu_hwpt_data_type - IOMMU HWPT Data Type
  * @IOMMU_HWPT_DATA_NONE: no data
@@ -437,6 +441,7 @@ enum iommu_hwpt_data_type {
 	IOMMU_HWPT_DATA_NONE,
 	IOMMU_HWPT_DATA_VTD_S1,
 	IOMMU_HWPT_DATA_ARM_SMMUV3,
+	IOMMU_HWPT_DATA_KVM,
 };
 
 /**
@@ -444,7 +449,8 @@ enum iommu_hwpt_data_type {
  * @size: sizeof(struct iommu_hwpt_alloc)
  * @flags: Combination of enum iommufd_hwpt_alloc_flags
  * @dev_id: The device to allocate this HWPT for
- * @pt_id: The IOAS or HWPT to connect this HWPT to
+ * @pt_id: The IOAS or HWPT to connect this HWPT to.
+ *         It's not checked data_type is IOMMU_HWPT_DATA_KVM.
  * @out_hwpt_id: The ID of the new HWPT
  * @__reserved: Must be 0
  * @data_type: One of enum iommu_hwpt_data_type

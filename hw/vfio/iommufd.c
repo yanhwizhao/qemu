@@ -25,6 +25,7 @@
 #include <sys/ioctl.h>
 #include <linux/vfio.h>
 #include <linux/iommufd.h>
+#include "sysemu/kvm.h"
 
 #include "hw/vfio/vfio-common.h"
 #include "qemu/error-report.h"
@@ -35,6 +36,8 @@
 #include "sysemu/reset.h"
 #include "qemu/cutils.h"
 #include "qemu/char_dev.h"
+
+#define IMPORT_KVM 1
 
 static VFIODevice *iommufd_dev_iter_next(VFIOContainer *bcontainer,
                                            VFIODevice *curr)
@@ -277,6 +280,33 @@ static int __vfio_device_detach_hwpt(VFIODevice *vbasedev, Error **errp)
     return ret;
 }
 
+#ifdef IMPORT_KVM
+static int get_kvm_tdp_fd(void)
+{
+#ifdef CONFIG_KVM
+    struct kvm_create_tdp_fd ct;
+
+    if (!kvm_enabled()) {
+        return -1;
+    }
+
+    ct.as_id = 0;
+    ct.mode = 0;
+    ct.fd = -1;
+
+    printf("get_kvm_tdp_fd 1\n");
+    if (kvm_vm_ioctl(kvm_state, KVM_CREATE_TDP_FD, &ct)) {
+        error_report("Failed to get KVM exported tdp %m");
+    }
+
+    printf("get_kvm_tdp_fd 2 fd=%d\n", ct.fd);
+    return ct.fd;
+#else
+    return -1;
+#endif
+}
+#endif
+
 static int vfio_device_attach_container(VFIODevice *vbasedev,
                                         VFIOIOMMUFDContainer *container,
                                         Error **errp)
@@ -300,11 +330,29 @@ static int vfio_device_attach_container(VFIODevice *vbasedev,
         }
     }
 
+#ifdef IMPORT_KVM
+    int tdp_fd;
+    struct iommu_hwpt_kvm_info kvm_hwpt;
+
+    tdp_fd = get_kvm_tdp_fd();
+    printf("tdp_fd=%d\n", tdp_fd);
+    if (tdp_fd < 0) {
+        error_setg_errno(errp, errno, "error alloc imported KVM hwpt");
+    }
+    kvm_hwpt.fd = tdp_fd;
+
+    ret = iommufd_backend_alloc_hwpt(iommufd, vbasedev->devid,
+                                     container->ioas_id, 0,
+                                     IOMMU_HWPT_DATA_KVM,
+                                     sizeof(kvm_hwpt), &kvm_hwpt, &hwpt_id);
+#else
+
     ret = iommufd_backend_alloc_hwpt(iommufd, vbasedev->devid,
                                      container->ioas_id, 0,
                                      IOMMU_HWPT_DATA_NONE,
                                      0, NULL, &hwpt_id);
 
+#endif
     if (ret) {
         error_setg_errno(errp, errno, "error alloc shadow hwpt");
         return ret;
